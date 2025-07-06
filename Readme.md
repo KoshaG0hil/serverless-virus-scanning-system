@@ -6,152 +6,126 @@ This project demonstrates a secure, serverless virus scanning system using AWS L
 
 ## 🚀 Project Objective
 
-To build a virus-scanning system where users can upload files to an S3 bucket. The file is automatically scanned by ClamAV running in a Lambda function, and:
+To build a virus-scanning pipeline where users upload files to an S3 bucket. On upload:
 
-- ✅ If clean: stored in a “safe files” S3 bucket.
-- ❌ If infected: moved to a quarantine bucket.
-- 📝 Metadata is logged in DynamoDB.
-- 🔔 Notifications sent via SNS.
-
----
-
-## 🧱 Architecture Overview
-
-- **S3 Buckets**: 
-  - `incoming-uploads`: where users upload files.
-  - `safe-files`: clean files are moved here.
-  - `quarantine-files`: infected files go here.
-
-- **Lambda Function**: 
-  - Triggered by S3 event on file upload.
-  - Downloads and scans the file using ClamAV.
-  - Logs the result to DynamoDB.
-  - Publishes result to SNS topic.
-  - Moves file to appropriate bucket.
-
-- **ClamAV Layer**: Custom-built and zipped on EC2 (Amazon Linux 2).
-
-- **SNS**: Sends notifications on file scan results.
-
-- **DynamoDB**: Stores logs for each file scanned.
+- 🧪 File is scanned by ClamAV in a Lambda function
+- ✅ If clean → stored in a "safe" bucket
+- ❌ If infected → moved to a "quarantine" bucket
+- 📝 Metadata is logged in DynamoDB
+- 🔔 Admin is notified via SNS
 
 ---
 
-## 🛠️ Technologies Used
+## 🧱 Architecture Diagram
+
+```text
+[S3 Upload Bucket] --> (Trigger) --> [Lambda + ClamAV Layer]
+                                      ├── ClamAV Scan
+                                      ├── Write to DynamoDB
+                                      ├── Notify via SNS
+                                      └── Move file to SAFE or QUARANTINE bucket
+```
+
+---
+
+## 🛠️ Services Used
 
 | Service     | Purpose |
 |-------------|---------|
-| S3          | File storage |
-| Lambda      | Execute scan logic |
-| ClamAV      | Antivirus engine |
-| DynamoDB    | Metadata logs |
-| SNS         | Notifications |
-| IAM         | Security roles |
-| EC2         | Building ClamAV Layer |
+| EC2         | Build ClamAV binaries for Lambda layer |
+| Lambda      | Runs ClamAV scan logic |
+| S3          | File upload, safe, and quarantine buckets |
+| DynamoDB    | Stores scan logs |
+| SNS         | Sends email alerts |
+| IAM         | Permissions for Lambda and access |
+| Postman     | Manual API testing |
 
 ---
 
-## 📂 Folder Structure
+## 📦 Folder Structure
 
 ```
-secure-virus-scanner/
+virus-scanner-project/
+│
 ├── lambda/
 │   ├── scanner_function.py
 │   └── requirements.txt
+│
 ├── layer/
-│   └── clamav-layer.zip
+│   └── clamav-layer.zip (built from EC2)
+│
 ├── postman/
 │   └── test-upload-collection.json
+│
 └── README.md
 ```
 
 ---
 
-## 📦 Full Setup Instructions
+## 🏗️ Setup Steps (Detailed)
 
-### ✅ Step 1: Create S3 Buckets
-- Create three buckets:
-  - `incoming-uploads`
-  - `safe-files`
-  - `quarantine-files`
+### ✅ 1. Build ClamAV Layer on EC2
 
-### ✅ Step 2: Create DynamoDB Table
-- Name: `VirusScanLogs`
-- Primary key: `filename` (String)
+1. Launch EC2: Amazon Linux 2 t2.micro (Free Tier)
+2. Connect using Instance Connect or SSH:
+   ```bash
+   ssh -i your-key.pem ec2-user@<public-ip>
+   ```
 
-### ✅ Step 3: Create SNS Topic
-- Create a new topic.
-- Add email subscription to receive scan results.
-- Copy the **Topic ARN**.
+3. Install dependencies:
+   ```bash
+   sudo yum update -y
+   sudo yum install gcc openssl-devel libcurl-devel zlib-devel cmake unzip wget -y
+   ```
 
-### ✅ Step 4: Build ClamAV Layer on EC2
-1. Launch EC2 (Amazon Linux 2)
-2. SSH and install dependencies:
+4. Download & compile ClamAV:
+   ```bash
+   mkdir clamav-layer && cd clamav-layer
+   wget https://www.clamav.net/downloads/production/clamav-0.103.2.tar.gz
+   tar -xvzf clamav-0.103.2.tar.gz
+   cd clamav-0.103.2
+   ./configure --prefix=$(pwd)/install_dir
+   make -j2
+   make install
+   ```
 
-```bash
-sudo yum update -y
-sudo yum install gcc openssl-devel libcurl-devel zlib-devel cmake unzip -y
-```
+5. Package layer:
+   ```bash
+   cd install_dir
+   mkdir -p clamav/bin clamav/lib
+   cp -r bin/* clamav/bin/
+   cp -r lib/* clamav/lib/
+   zip -r9 ../clamav-layer.zip clamav
+   ```
 
-3. Download and compile ClamAV:
-
-```bash
-mkdir clamav-layer && cd clamav-layer
-wget https://www.clamav.net/downloads/production/clamav-0.103.2.tar.gz
-tar -xvzf clamav-0.103.2.tar.gz
-cd clamav-0.103.2
-./configure --prefix=$(pwd)/install_dir
-make -j2
-make install
-```
-
-4. Package the layer:
-
-```bash
-cd install_dir
-mkdir -p clamav/lib clamav/bin
-cp -r lib/* clamav/lib/
-cp -r bin/* clamav/bin/
-zip -r9 ../clamav-layer.zip clamav
-```
-
-5. Download the ZIP to your local machine.
-6. Go to Lambda > Layers > Create Layer.
-7. Upload ZIP and set compatible runtimes to Python 3.9.
+6. Download zip to local system and upload it to:
+   - **AWS Lambda > Layers > Create Layer**
+   - Name: `python39-clamav`
+   - Runtime: Python 3.9
+   - Upload: `clamav-layer.zip`
 
 ---
 
-### ✅ Step 5: Create IAM Role for Lambda
-- Attach permissions:
-  - `AmazonS3FullAccess`
-  - `AmazonDynamoDBFullAccess`
-  - `AmazonSNSFullAccess`
-  - `AWSLambdaBasicExecutionRole`
+### ✅ 2. Create Lambda Function
 
----
-
-### ✅ Step 6: Create Lambda Function
 - Runtime: Python 3.9
-- Upload `scanner_function.py`
-- Attach the IAM role created earlier.
-- Attach the ClamAV Lambda Layer you uploaded.
-- Set the following environment variables:
+- Attach Layer: `python39-clamav`
+- Set Environment Variables:
+  - `SAFE_BUCKET`: your-safe-bucket
+  - `QUARANTINE_BUCKET`: your-quarantine-bucket
+  - `SNS_TOPIC_ARN`: arn:aws:sns:...
 
-```txt
-SNS_TOPIC_ARN = <your-topic-arn>
-SAFE_BUCKET = safe-files
-QUARANTINE_BUCKET = quarantine-files
-```
+- Permissions (IAM Role):
+  - AmazonS3FullAccess
+  - AmazonDynamoDBFullAccess
+  - AmazonSNSFullAccess
+  - AWSLambdaBasicExecutionRole
 
-- Create an S3 trigger:
-  - Source: `incoming-uploads`
-  - Event type: PUT
-  - Prefix: (leave blank)
-  - Suffix: (e.g., `.zip` or leave blank for all files)
+- Upload the function code: `scanner_function.py`
 
 ---
 
-### ✅ Step 7: Lambda Code
+### ✅ 3. Lambda Function Code
 
 ```python
 import boto3, os, subprocess
@@ -184,28 +158,67 @@ def lambda_handler(event, context):
             Message=f'{key} is {status}'
         )
 
-        target_bucket = os.environ['SAFE_BUCKET'] if status == 'CLEAN' else os.environ['QUARANTINE_BUCKET']
-        s3.copy_object(Bucket=target_bucket, CopySource=f'{bucket}/{key}', Key=key)
+        target = os.environ['SAFE_BUCKET'] if status == 'CLEAN' else os.environ['QUARANTINE_BUCKET']
+        s3.copy_object(Bucket=target, CopySource=f'{bucket}/{key}', Key=key)
         s3.delete_object(Bucket=bucket, Key=key)
 
-    return {'statusCode': 200, 'body': 'Scan completed'}
+    return {'statusCode': 200, 'body': 'Scan complete'}
 ```
 
 ---
 
-## 🧪 Testing
-- Use Postman or AWS CLI to upload test files to the `incoming-uploads` bucket.
-- Monitor CloudWatch logs and verify:
-  - Files moved to the correct bucket.
-  - Scan logs written to DynamoDB.
-  - Email notification is received.
+### ✅ 4. Create Buckets
+
+- Upload Bucket: `virus-upload-bucket`
+- Safe Bucket: `virus-safe-bucket`
+- Quarantine Bucket: `virus-quarantine-bucket`
+
+Enable event trigger on **upload bucket** to invoke Lambda on `PUT`.
 
 ---
 
-## 🧹 Cleanup
-- Delete EC2, S3 buckets, Lambda, DynamoDB, and SNS to avoid charges.
+### ✅ 5. Create DynamoDB Table
+
+- Name: `VirusScanLogs`
+- Primary Key: `filename` (String)
 
 ---
 
-## 📧 Contact
-Made with ❤️ by [YourName] – Reach out if you have questions!
+### ✅ 6. Create SNS Topic
+
+- Name: `VirusScanAlerts`
+- Subscribe your email.
+- Use the topic ARN in Lambda env vars.
+
+---
+
+### ✅ 7. Testing
+
+Use Postman or AWS CLI to upload a file:
+
+```bash
+aws s3 cp testfile.txt s3://virus-upload-bucket/
+```
+
+- ✅ Clean → see in safe bucket
+- ❌ Infected → in quarantine bucket
+- Check logs in DynamoDB
+- Check email notification
+
+
+---
+
+## 🙋‍♀️ Built By
+
+**Kosha Gohil**  
+Cloud Support Associate | AWS Solutions Architect Associate | CompTIA Security+  
+
+
+---
+
+## 💡 What I Learned
+
+- Built Lambda layer from scratch on EC2
+- Integrated 6+ AWS services securely
+- Debugged permissions, 502 errors, zip issues
+- Understood full serverless pipeline for antivirus scanning
