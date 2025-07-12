@@ -15,6 +15,15 @@ To build a virus-scanning pipeline where users upload files to an S3 bucket. On 
 - 🔔 Admin is notified via SNS
 
 ---
+**##🛠️ Tech Stack**
+
+- AWS Services: Lambda, S3, DynamoDB, SNS, IAM, EC2
+
+- Languages & Tools: Python, ClamAV, Bash, AWS CLI, Postman
+
+- Infrastructure: Serverless architecture using Lambda Layers and S3 event triggers
+
+- Security: IAM least privilege roles, automated malware scanning & quarantine
 
 ## 🧱 Architecture Diagram
 
@@ -213,6 +222,14 @@ aws s3 cp testfile.txt s3://virus-upload-bucket/
 **Kosha Gohil**  
 Cloud Support Associate | AWS Solutions Architect Associate | CompTIA Security+  
 
+**📈 Impact & Benefits**
+- Automated malware detection and quarantine to prevent malicious file uploads, improving system security posture
+
+- Eliminated manual virus scanning, reducing response time and operational overhead
+
+- Scalable, cost-effective serverless solution leveraging AWS Free Tier resources
+
+- Demonstrates strong expertise in serverless AWS services, Lambda layers, and security automation
 
 ---
 
@@ -222,3 +239,5 @@ Cloud Support Associate | AWS Solutions Architect Associate | CompTIA Security+
 - Integrated 6+ AWS services securely
 - Debugged permissions, 502 errors, zip issues
 - Understood full serverless pipeline for antivirus scanning
+
+
