@@ -1,12 +1,15 @@
-# 🛡️ Serverless Malware & Virus Scanning System (Google Cloud Run + ClamAV)
-
-[![Google Cloud](https://img.shields.io/badge/Google_Cloud-Cloud_Run_|_GCS_|_Eventarc_|_Firestore-blue.svg)](https://cloud.google.com/)
+[![Google Cloud](https://img.shields.io/badge/Google_Cloud-Cloud_Run_|_GCS_|_Eventarc-blue.svg)](https://cloud.google.com/)
+[![AWS](https://img.shields.io/badge/AWS-Lambda_|_S3_|_DynamoDB_|_SNS-orange.svg)](https://aws.amazon.com/)
 [![ClamAV](https://img.shields.io/badge/Antivirus-ClamAV_Engine-red.svg)](https://www.clamav.net/)
 [![Docker](https://img.shields.io/badge/Container-Docker_OCI-2496ED.svg)](https://www.docker.com/)
-[![Terraform](https://img.shields.io/badge/IaC-Terraform_GCP-purple.svg)](https://www.terraform.io/)
+[![Terraform](https://img.shields.io/badge/IaC-Terraform-purple.svg)](https://www.terraform.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-An enterprise-grade, event-driven serverless malware scanning pipeline built on **Google Cloud Platform (GCP)**. Automatically intercepts file uploads to Google Cloud Storage, scans payloads in an isolated **Google Cloud Run** containerized sandbox using the **ClamAV** engine, isolates malicious threats in a quarantine bucket, logs audit trails to **Cloud Firestore**, and dispatches instant security alerts via **Cloud Pub/Sub**.
+An enterprise-grade, event-driven serverless malware scanning pipeline providing **dual cloud implementations**:
+1. **Google Cloud Platform (Production Recommended)**: **Google Cloud Run** + **Google Cloud Storage (GCS)** + **Eventarc** + **Cloud Firestore** + **Cloud Pub/Sub**.
+2. **Amazon Web Services (AWS)**: **AWS Lambda** + **Amazon S3** + **Amazon DynamoDB** + **Amazon SNS** (located in [`aws-serverless/`](aws-serverless/)).
+
+Automatically intercepts file uploads to object storage, scans payloads in an isolated sandbox using the **ClamAV** engine, isolates malicious threats in a quarantine bucket, logs audit trails, and dispatches instant security alerts.
 
 ---
 
@@ -150,6 +153,27 @@ terraform init
 terraform plan -var="project_id=YOUR_PROJECT_ID"
 terraform apply -var="project_id=YOUR_PROJECT_ID"
 ```
+
+---
+
+### Option 3: Deploy AWS Serverless Pipeline (AWS Lambda + S3 + SNS)
+To deploy the alternate serverless pipeline directly on **Amazon Web Services (AWS)**:
+
+```bash
+cd aws-serverless/terraform
+
+terraform init
+terraform plan
+terraform apply
+```
+
+**AWS Pipeline Workflow:**
+1. Incoming media/documents are uploaded to the S3 `untrusted` landing bucket.
+2. `s3:ObjectCreated:*` event triggers AWS Lambda (`aws-serverless/lambda_function.py`).
+3. ClamAV layer scans the file and calculates cryptographic SHA-256 hash.
+4. Clean files are promoted to the `clean` S3 bucket; infected files are isolated in the `quarantine` S3 bucket.
+5. Audit logs are written to Amazon DynamoDB (`VirusScanLogs`).
+6. Real-time security alerts are published to Amazon SNS.
 
 ---
 
